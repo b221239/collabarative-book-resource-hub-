@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BookHub – Buy, Borrow & Donate Books</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+:root{--navy:#1f2d3d;--gold:#b48f56}
+body{background:#f4f5f7;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+nav.top{background:var(--navy);position:sticky;top:0;z-index:50}
+.brand{color:#fff;font-weight:700;font-size:1.25rem;cursor:pointer;text-decoration:none}
+.sbar{display:flex;flex:1;max-width:560px;margin:0}.sbar input{border:0;border-radius:6px 0 0 6px;padding:.45rem .8rem;flex:1;outline:0}.sbar button{border:0;border-radius:0 6px 6px 0;background:var(--gold);color:#fff;padding:0 1rem}
+.btn-gold{background:var(--gold);color:#fff;border:0}.btn-gold:hover{background:#9a7a46;color:#fff}
+.hero{background:linear-gradient(120deg,#1f2d3d,#3b5573);color:#fff;border-radius:14px;padding:2rem}
+.pill{border:1px solid #d0d5dc;background:#fff;border-radius:20px;padding:.25rem .9rem;font-size:.85rem;cursor:pointer;white-space:nowrap}.pill.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.pcard{border:0;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);transition:.15s}.pcard:hover{transform:translateY(-3px);box-shadow:0 6px 16px rgba(0,0,0,.14)}
+.pimg{height:190px;object-fit:cover;background:#e9ecef;width:100%}
+.ribbon{position:absolute;top:10px;left:10px;font-size:.7rem;font-weight:700;padding:.2rem .55rem;border-radius:4px;color:#fff}
+.heart{position:absolute;bottom:10px;right:10px;width:36px;height:36px;border:0;border-radius:50%;background:#fff;color:#dc3545;font-size:1.25rem;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.25);cursor:pointer;padding:0}
+.heart:hover{transform:scale(1.1)}
+.price{font-size:1.3rem;font-weight:700}.sub{font-size:.78rem;color:#6b7280}
+.ava{width:22px;height:22px;border-radius:50%;background:var(--gold);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700}
+.steps{display:flex;margin:.7rem 0}.step{flex:1;text-align:center;font-size:.7rem;color:#9aa1ab;position:relative}
+.step:before{content:"";display:block;width:14px;height:14px;border-radius:50%;background:#d5d9df;margin:0 auto 3px;position:relative;z-index:1}
+.step:after{content:"";position:absolute;top:6px;left:-50%;width:100%;height:2px;background:#d5d9df}.step:first-child:after{display:none}
+.step.ok{color:#198754}.step.ok:before,.step.ok:after{background:#198754}
+#toasts{position:fixed;top:70px;right:16px;z-index:99;display:flex;flex-direction:column;gap:8px}.toast-msg{color:#fff;padding:.7rem 1rem;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.2);max-width:320px}
+.clickable{cursor:pointer}.clickable:hover{text-decoration:underline}
+#ov{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:90;display:none;align-items:center;justify-content:center;padding:1rem}
+#ov.on{display:flex}#ov .box{background:#fff;border-radius:14px;max-width:720px;width:100%;max-height:92vh;overflow:auto;position:relative}
+#ov .x{position:absolute;top:8px;right:14px;font-size:1.6rem;border:0;background:none;cursor:pointer;line-height:1}
+.dimg{width:100%;height:100%;min-height:240px;max-height:360px;object-fit:cover;background:#e9ecef}
+.thumb{width:48px;height:62px;object-fit:cover;border-radius:6px;background:#e9ecef}
+.cbox{height:320px;overflow:auto;background:#f4f5f7;border-radius:10px;padding:10px}
+.bub{max-width:78%;padding:.45rem .7rem;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.bub.me{background:var(--gold);color:#fff}.bub.them{background:#fff;color:var(--navy)}
+.bub .t{font-size:.65rem;opacity:.7;text-align:right}
+</style></head>
+<body>
+<div id="toasts"></div>
+<div id="ov" onclick="if(event.target===this)closeDetail()"><div class="box"><button class="x" onclick="closeDetail()">&times;</button><div id="ovc"></div></div></div>
+<nav class="top d-flex align-items-center px-3 py-2 gap-2 flex-wrap">
+  <a class="brand" onclick="goHome()">📚 BookHub</a>
+  <form class="sbar mx-md-3" onsubmit="return gs()"><input id="gs" placeholder="Search books by title or author"><button>Search</button></form>
+  <div id="menu" class="ms-auto d-flex gap-2 align-items-center flex-wrap"></div>
+</nav>
+<div class="container py-4" id="app"></div>
+<footer class="text-center sub py-4">© BookHub · Buy, borrow &amp; donate books · Prototype: payment, courier and OTP are simulated</footer>
+<script>
+const $ = s => document.querySelector(s);
+let token = localStorage.token, me = JSON.parse(localStorage.me || 'null'), BOOKS = [], SAVED = new Set(), PAGE = 'home', CHAT = null;
+const F = { search: '', category: '', location: '', mode: '', sort: '' };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => '₹' + Number(n || 0);
+const val = id => document.getElementById(id).value;
+const fileToB64 = f => new Promise(res => { if (!f) return res(null); const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+const btn = (t, fn, c = 'gold') => `<button class="btn btn-sm btn-${c}" onclick="${fn}">${t}</button>`;
+function toast(m, t = 'dark') { const e = document.createElement('div'); e.className = 'toast-msg bg-' + t; e.textContent = m; $('#toasts').append(e); setTimeout(() => e.remove(), 3800); }
+async function api(url, method = 'GET', body) {
+  let r;
+  try { r = await fetch('/api' + url, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body ? JSON.stringify(body) : undefined }); }
+  catch (e) { toast('Cannot reach server. Is "npm start" running?', 'danger'); throw e; }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(d.error || 'Error', 'danger'); if (r.status === 401 && me) logout(); throw new Error(d.error); }
+  return d;
+}
+
+// ---------- navbar ----------
+function menu() {
+  const b = (l, p, c = 'outline-light') => `<button class="btn btn-sm btn-${c}" onclick="show('${p}')">${l}</button>`;
+  $('#menu').innerHTML = me
+    ? b('＋ Sell / Lend a Book', 'add', 'gold') + b('My Listings', 'mine') + b('My Orders', 'orders') + b('❤ Wishlist', 'wish') +
+      `<button class="btn btn-sm btn-outline-light" onclick="show('notes')">🔔<span id="bell" class="badge bg-danger ms-1 d-none"></span></button>` +
+      (me.role === 'admin' ? b('Admin', 'admin', 'warning') : '') +
+      `<button class="btn btn-sm btn-outline-light" onclick="logout()">Logout (${esc(me.name.split(' ')[0])})</button>`
+    : b('Login / Register', 'login', 'gold');
+  if (me) api('/notifications').then(n => { const u = n.filter(x => !x.read_status).length, e = $('#bell'); if (e && u) { e.textContent = u; e.classList.remove('d-none'); } }).catch(() => {});
+}
+function logout() { closeDetail(); localStorage.clear(); token = me = null; SAVED = new Set(); goHome(); }
+function goHome() { Object.assign(F, { search: '', category: '', location: '', mode: '', sort: '' }); $('#gs').value = ''; show('home'); }
+function gs() { F.search = val('gs'); show('home'); return false; }
+function show(p) {
+  closeDetail();
+  if (!me && ['add', 'mine', 'orders', 'notes', 'admin', 'wish'].includes(p)) p = 'login';
+  PAGE = p;
+  menu(); ({ home, login, add, mine, orders, notes, admin, wish }[p])(); window.scrollTo(0, 0);
+}
+
+// ---------- login / register ----------
+function login() {
+  $('#app').innerHTML = `<div class="row justify-content-center"><div class="col-md-6 col-lg-5"><div class="card p-4 border-0 shadow-sm">
+   <ul class="nav nav-pills mb-3"><li class="nav-item"><a class="nav-link active" id="t1" role="button" onclick="tab(1)">Login</a></li><li class="nav-item"><a class="nav-link" id="t0" role="button" onclick="tab(0)">Register</a></li></ul>
+   <div id="lf"><input id="le" class="form-control mb-2" placeholder="Email"><input id="lp" type="password" class="form-control mb-2" placeholder="Password">
+    <button class="btn btn-gold w-100" onclick="doLogin()">Login</button><p class="sub mt-2 mb-0">Demo admin: admin@bookhub.com / admin123</p></div>
+   <div id="rf" class="d-none"><input id="rn" class="form-control mb-2" placeholder="Full name"><input id="re" class="form-control mb-2" placeholder="Email">
+    <input id="rph" class="form-control mb-2" placeholder="Mobile (10 digits)"><input id="rc" class="form-control mb-2" placeholder="City">
+    <input id="ra" class="form-control mb-2" placeholder="Address"><input id="rp" type="password" class="form-control mb-2" placeholder="Password (6+ chars)">
+    <button class="btn btn-gold w-100" onclick="doReg()">Create account</button></div></div></div></div>`;
+}
+function tab(l) { $('#lf').classList.toggle('d-none', !l); $('#rf').classList.toggle('d-none', !!l); $('#t1').classList.toggle('active', !!l); $('#t0').classList.toggle('active', !l); }
+async function doLogin(e, p) {
+  const d = await api('/login', 'POST', { email: e || val('le'), password: p || val('lp') });
+  token = localStorage.token = d.token; me = d.user; localStorage.me = JSON.stringify(me); toast('Welcome, ' + me.name, 'success'); show('home');
+}
+async function doReg() {
+  const o = { name: val('rn'), email: val('re'), phone: val('rph'), city: val('rc'), address: val('ra'), password: val('rp') };
+  await api('/register', 'POST', o); await doLogin(o.email, o.password);
+}
+
+// ---------- browse ----------
+const MODES = [['', 'All'], ['sell', '🛒 Buy'], ['lend', '📖 Borrow'], ['donate', '🎁 Free'], ['exchange', '🔄 Exchange']], CATS = ['', 'Textbook', 'Novel', 'Exam', 'Comics'];
+const SORTS = [['', 'Newest first'], ['low', 'Price: low to high'], ['high', 'Price: high to low'], ['rating', 'Best owner rating']];
+const RB = { sell: ['FOR SALE', '#198754'], lend: ['BORROW', '#0d6efd'], donate: ['FREE', '#6f42c1'], exchange: ['EXCHANGE', '#fd7e14'] };
+const LB = { sell: 'Buy Now', lend: 'Request to Borrow', donate: 'Request for Free', exchange: 'Request Exchange' };
+function setF(k, v) { F[k] = v; show('home'); }
+function home() {
+  const pills = (arr, key) => arr.map(x => { const v = Array.isArray(x) ? x[0] : x, l = Array.isArray(x) ? x[1] : (x || 'All categories');
+    return `<span class="pill ${F[key] === v ? 'on' : ''}" onclick="setF('${key}','${v}')">${l}</span>`; }).join('');
+  const myCity = me && me.city ? `<span class="pill ${String(F.location).toLowerCase() === String(me.city).toLowerCase() ? 'on' : ''}" onclick="setF('location','${esc(me.city)}')">📍 My city</span>` : '';
+  const hero = (!F.search && !F.category && !F.mode && !F.location) ? `<div class="hero mb-4"><h2 class="fw-bold">Buy, borrow or get books free from readers near you</h2>
+    <p class="mb-3 opacity-75">Send a request, the owner accepts, you pay securely and the book is delivered to your door.</p>${me ? '' : '<button class="btn btn-gold" onclick="show(\'login\')">Get started</button>'}</div>` : '';
+  $('#app').innerHTML = hero + `<div class="d-flex gap-2 overflow-auto mb-2">${pills(MODES, 'mode')}</div>
+   <div class="d-flex gap-2 overflow-auto mb-3 align-items-center">${pills(CATS, 'category')}${myCity}<input class="form-control form-control-sm" style="max-width:170px" placeholder="📍 City" value="${esc(F.location)}" onchange="setF('location',this.value)">
+   <select class="form-select form-select-sm ms-auto" style="max-width:190px" onchange="setF('sort',this.value)">${SORTS.map(s => `<option value="${s[0]}" ${F.sort === s[0] ? 'selected' : ''}>${s[1]}</option>`).join('')}</select></div>
+   <div class="row g-3" id="books"></div>`;
+  loadBooks();
+}
+async function loadBooks() {
+  const books = BOOKS = await api('/books?' + new URLSearchParams(F));
+  if (me) { try { SAVED = new Set(await api('/wishlist/ids')); } catch (e) {} }
+  const P = b => b.mode === 'donate' ? '<div class="price text-success">FREE</div><div class="sub">+ delivery</div>'
+    : `<div class="price">${money(b.price)}</div><div class="sub">${b.mode === 'sell' ? '+ delivery' : b.mode === 'lend' ? 'borrowing fee · 14 days' : 'exchange fee'}</div>`;
+  const heart = b => me && me.id !== b.owner_id
+    ? `<button class="heart" title="Save to wishlist" onclick="event.stopPropagation();toggleSave(${b.book_id})">${SAVED.has(b.book_id) ? '♥' : '♡'}</button>` : '';
+  const card = b => `<div class="col-6 col-md-4 col-lg-3"><div class="card pcard h-100"><div class="position-relative clickable" onclick="detail(${b.book_id})">
+    ${b.photo ? `<img class="pimg" src="${b.photo}">` : '<div class="pimg d-flex align-items-center justify-content-center display-4">📖</div>'}
+    <span class="ribbon" style="background:${RB[b.mode][1]}">${RB[b.mode][0]}</span>${b.availability === 'reserved' ? '<span class="ribbon" style="left:auto;right:10px;background:#6c757d">RESERVED</span>' : ''}${heart(b)}</div>
+    <div class="card-body d-flex flex-column"><h6 class="mb-0 clickable" onclick="detail(${b.book_id})">${esc(b.title)}</h6><div class="sub mb-2">${esc(b.author)} · ${esc(b.category)}</div>${P(b)}
+     <div class="sub mt-2">Condition: ${esc(b.book_condition)} · 📍 ${esc(b.location)}</div>
+     <div class="sub my-2"><span class="ava">${esc(b.owner_name[0])}</span> ${esc(b.owner_name)} ${b.owner_rating ? '⭐' + b.owner_rating : ''} · reliability ${b.reliability}</div>
+     <div class="mt-auto">${me && me.id === b.owner_id ? '<span class="sub">Your listing</span>'
+       : b.availability === 'available' ? `<button class="btn btn-gold w-100" onclick="requestBook(${b.book_id})">${LB[b.mode]}</button>` : ''}</div></div></div></div>`;
+  // books in the logged-in user's own city come first (only when no city filter is chosen)
+  const mc = me ? String(me.city || '').trim().toLowerCase() : '';
+  let html;
+  if (mc && !F.location) {
+    const near = books.filter(b => String(b.location || '').trim().toLowerCase() === mc);
+    const rest = books.filter(b => !near.includes(b));
+    if (near.length) {
+      html = `<div class="col-12"><h6 class="mb-0">📍 Books near you in ${esc(me.city)}</h6></div>${near.map(card).join('')}`
+        + (rest.length ? `<div class="col-12 mt-3"><h6 class="mb-0">Other books</h6></div>${rest.map(card).join('')}` : '');
+    } else {
+      html = (books.length ? `<div class="col-12"><div class="sub">No books in your city (${esc(me.city)}) yet. Showing books from other places.</div></div>` : '') + books.map(card).join('');
+    }
+  } else html = books.map(card).join('');
+  $('#books').innerHTML = html || '<p class="text-center sub py-5">No books found. Try another search.</p>';
+}
+async function requestBook(id) { if (!me) return show('login'); await api('/requests', 'POST', { book_id: id }); toast('Request sent! You can chat with the owner from My Orders.', 'success'); show('orders'); }
+
+// ---------- book detail ----------
+function detail(id) {
+  const b = BOOKS.find(x => x.book_id === id); if (!b) return;
+  const price = b.mode === 'donate' ? 'FREE' : money(b.price);
+  const mineBook = me && me.id === b.owner_id;
+  const save = me && !mineBook ? `<button class="btn btn-outline-danger btn-sm w-100 mb-2" onclick="toggleSave(${b.book_id})">${SAVED.has(b.book_id) ? '♥ Saved (click to remove)' : '♡ Save to wishlist'}</button>` : '';
+  const act = mineBook ? '<span class="sub">This is your listing</span>'
+    : b.availability === 'available' ? `<button class="btn btn-gold w-100" onclick="requestBook(${b.book_id})">${LB[b.mode]}</button>`
+    : `<span class="badge bg-secondary">${b.availability === 'reserved' ? 'Currently reserved' : 'Not available'}</span>`;
+  const similar = BOOKS.filter(x => x.book_id !== id && (x.category === b.category || x.author === b.author)).slice(0, 3);
+  $('#ovc').innerHTML = `<div class="row g-0"><div class="col-md-5">${b.photo ? `<img class="dimg" src="${b.photo}">` : '<div class="dimg d-flex align-items-center justify-content-center display-1">📖</div>'}</div>
+   <div class="col-md-7 p-4"><span class="badge" style="background:${RB[b.mode][1]}">${RB[b.mode][0]}</span>
+    <h4 class="mt-2 mb-0">${esc(b.title)}</h4><div class="sub mb-3">by ${esc(b.author || 'Unknown')} · ${esc(b.category || 'General')}</div>
+    <div class="price mb-1">${price}</div><div class="sub mb-3">${b.mode === 'sell' ? 'Book price, delivery charged extra' : b.mode === 'lend' ? 'Borrowing fee for 14 days, delivery extra' : b.mode === 'donate' ? 'Only delivery charged' : 'Exchange fee, delivery extra'}</div>
+    <table class="table table-sm mb-3"><tr><td class="sub">Condition</td><td>${esc(b.book_condition)}</td></tr><tr><td class="sub">Location</td><td>📍 ${esc(b.location)}</td></tr>
+     <tr><td class="sub">Listed by</td><td><span class="ava">${esc(b.owner_name[0])}</span> ${esc(b.owner_name)}</td></tr>
+     <tr><td class="sub">Owner rating</td><td>${b.owner_rating ? '⭐ ' + b.owner_rating + ' / 5' : 'No reviews yet'}</td></tr><tr><td class="sub">Reliability</td><td>${b.reliability} / 100</td></tr></table>${save}${act}
+    ${similar.length ? `<div class="mt-3 sub">Similar books</div>${similar.map(s => `<div class="clickable small" onclick="detail(${s.book_id})">📖 ${esc(s.title)} · ${s.mode === 'donate' ? 'Free' : money(s.price)}</div>`).join('')}` : ''}</div></div>`;
+  $('#ov').classList.add('on');
+}
+function closeDetail() { if (CHAT) { clearInterval(CHAT.timer); CHAT = null; } $('#ov').classList.remove('on'); }
+
+// ---------- chat between owner and buyer ----------
+async function openChat(id) {
+  closeDetail();
+  CHAT = { id, timer: null };
+  $('#ovc').innerHTML = `<div class="p-3"><h5 class="mb-0 pe-4" id="ch-title">Chat</h5><div class="sub mb-2" id="ch-sub"></div>
+   <div class="cbox" id="cmsgs"></div><div id="cinfo" class="sub my-2"></div>
+   <div class="input-group"><input id="cin" class="form-control" maxlength="500" placeholder="Type a message" onkeydown="if(event.key==='Enter')sendMsg()"><button class="btn btn-gold" id="csend" onclick="sendMsg()">Send</button></div></div>`;
+  $('#ov').classList.add('on');
+  await refreshChat(true);
+  if (CHAT && CHAT.id === id) CHAT.timer = setInterval(() => refreshChat(false), 4000);
+}
+async function refreshChat(first) {
+  if (!CHAT) return;
+  const id = CHAT.id; let d;
+  try { d = await api(`/requests/${id}/messages`); } catch (e) { return; }
+  if (!CHAT || CHAT.id !== id) return;
+  $('#ch-title').textContent = d.title;
+  $('#ch-sub').textContent = 'Chat with ' + d.other_name;
+  const box = $('#cmsgs'), atEnd = first || box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  box.innerHTML = d.messages.map(m => {
+    const mine = m.sender_id === me.id;
+    return `<div class="d-flex ${mine ? 'justify-content-end' : ''} mb-2"><div class="bub ${mine ? 'me' : 'them'}"><div style="white-space:pre-wrap;word-break:break-word">${esc(m.body)}</div>
+      <div class="t">${new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div></div></div>`;
+  }).join('') || '<div class="sub text-center py-4">No messages yet. Say hello 👋</div>';
+  if (atEnd) box.scrollTop = box.scrollHeight;
+  const locked = d.closed || d.limit_left === 0;
+  $('#cinfo').textContent = d.closed ? '🔒 This chat is closed because the request was rejected or cancelled.'
+    : d.limit_left === null ? '✅ Request accepted. Unlimited chat.'
+    : d.limit_left > 0 ? `💬 ${d.limit_left} of 5 messages left. Unlimited chat after the owner accepts the request.`
+    : '🔒 Message limit reached. You can chat freely once the owner accepts the request.';
+  $('#cin').disabled = locked; $('#csend').disabled = locked;
+}
+async function sendMsg() {
+  const i = $('#cin'); if (!i || !CHAT) return;
+  const body = i.value.trim(); if (!body) return;
+  i.value = '';
+  try { await api(`/requests/${CHAT.id}/messages`, 'POST', { body }); } catch (e) { i.value = body; }
+  refreshChat(true);
+}
+
+// ---------- wishlist: save books and compare them ----------
+async function toggleSave(id) {
+  if (!me) return show('login');
+  if (SAVED.has(id)) { await api('/wishlist/' + id, 'DELETE'); SAVED.delete(id); toast('Removed from wishlist'); }
+  else { await api('/wishlist/' + id, 'POST'); SAVED.add(id); toast('Saved to wishlist ❤', 'success'); }
+  if (PAGE === 'wish') { closeDetail(); wish(); }
+  else { if (PAGE === 'home') loadBooks(); if ($('#ov').classList.contains('on')) detail(id); }
+}
+async function wish() {
+  const w = BOOKS = await api('/wishlist');
+  SAVED = new Set(w.map(x => x.book_id));
+  const row = b => {
+    const st = b.availability === 'available' ? '<span class="badge bg-success">Available</span>'
+      : b.availability === 'reserved' ? '<span class="badge bg-secondary">Reserved</span>' : '<span class="badge bg-danger">Not available</span>';
+    return `<tr><td>${b.photo ? `<img class="thumb" src="${b.photo}">` : '<span class="fs-3">📖</span>'}</td>
+     <td><span class="clickable fw-bold" onclick="detail(${b.book_id})">${esc(b.title)}</span><div class="sub">${esc(b.author)} · ${esc(b.category)}</div></td>
+     <td>${RB[b.mode][0]}</td><td class="fw-bold">${b.mode === 'donate' ? 'FREE' : money(b.price)}</td><td>${esc(b.book_condition)}</td>
+     <td>📍 ${esc(b.location)}</td><td>${b.owner_rating ? '⭐ ' + b.owner_rating : '–'}</td><td>${st}</td>
+     <td class="text-nowrap">${b.availability === 'available' ? btn(LB[b.mode], `requestBook(${b.book_id})`) : ''} ${btn('Remove', `toggleSave(${b.book_id})`, 'outline-danger')}</td></tr>`;
+  };
+  $('#app').innerHTML = `<h4 class="mb-1">❤ My Wishlist</h4><p class="sub">Books you saved. Compare them side by side, then request the best one. Tap ♡ on any book to save it.</p>` +
+    (w.length ? `<div class="table-responsive"><table class="table align-middle bg-white shadow-sm"><thead><tr><th></th><th>Book</th><th>Type</th><th>Price</th><th>Condition</th><th>Location</th><th>Owner rating</th><th>Status</th><th></th></tr></thead><tbody>${w.map(row).join('')}</tbody></table></div>`
+      : '<p class="sub py-4">Nothing saved yet. Go to Home and tap the ♡ on a book to save it here.</p>');
+}
+
+// ---------- list a book / my listings ----------
+function add() {
+  $('#app').innerHTML = `<div class="card p-4 border-0 shadow-sm mx-auto" style="max-width:640px"><h4>List your book</h4><div class="row g-2">
+   <div class="col-12"><label class="sub">ISBN (optional, auto-fills details)</label><div class="input-group"><input id="bi" class="form-control" placeholder="e.g. 9780143127741"><button class="btn btn-outline-dark" onclick="isbn()">Auto-fill</button></div><div id="im" class="sub mt-1"></div></div>
+   <div class="col-12"><input id="bt" class="form-control" placeholder="Book title"></div>
+   <div class="col-md-6"><input id="ba" class="form-control" placeholder="Author"></div><div class="col-md-6"><input id="bc" class="form-control" placeholder="Category (Textbook, Novel, Exam...)"></div>
+   <div class="col-md-6"><label class="sub">Condition</label><select id="bco" class="form-select"><option>New</option><option selected>Good</option><option>Fair</option><option>Worn</option></select></div>
+   <div class="col-md-6"><label class="sub">What do you want to do?</label><select id="bm" class="form-select" onchange="pl()"><option value="sell">Sell this book</option><option value="lend">Lend (borrowing fee)</option><option value="donate">Donate for free</option><option value="exchange">Exchange</option></select></div>
+   <div class="col-md-6" id="pw"><label class="sub" id="pll">Selling price (₹)</label><input id="bp" type="number" min="0" class="form-control" placeholder="e.g. 250"></div>
+   <div class="col-md-6"><label class="sub">Pickup city</label><input id="bl" class="form-control" value="${esc(me.city)}"></div>
+   <div class="col-12"><label class="sub">Photo of the book</label><input id="bph" type="file" accept="image/*" class="form-control"></div></div>
+   <button class="btn btn-gold mt-3" onclick="saveBook()">Publish listing</button></div>`;
+}
+function pl() { const m = val('bm'); $('#pw').style.display = m === 'donate' ? 'none' : ''; $('#pll').textContent = m === 'sell' ? 'Selling price (₹)' : m === 'lend' ? 'Borrowing fee (₹)' : 'Exchange fee (₹, 0 if none)'; }
+async function isbn() {
+  const code = val('bi').replace(/[^0-9Xx]/g, ''), m = $('#im');
+  if (code.length !== 10 && code.length !== 13) { m.textContent = 'Enter a valid 10 or 13 digit ISBN.'; return; }
+  m.textContent = 'Looking up...';
+  try {
+    const d = await (await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:' + code)).json();
+    const v = d.items && d.items[0] && d.items[0].volumeInfo;
+    if (!v) { m.textContent = 'No book found for this ISBN. Please fill the details manually.'; return; }
+    $('#bt').value = v.title + (v.subtitle ? ': ' + v.subtitle : '');
+    $('#ba').value = (v.authors || []).join(', ');
+    $('#bc').value = (v.categories || ['Novel'])[0];
+    m.textContent = 'Details filled from Google Books. Please check them and add a photo of your own copy.';
+  } catch (e) { m.textContent = 'Lookup failed (check internet). Fill the details manually.'; }
+}
+async function saveBook() {
+  await api('/books', 'POST', { title: val('bt'), author: val('ba'), category: val('bc'), book_condition: val('bco'), mode: val('bm'), price: val('bp'), location: val('bl'), photo: await fileToB64($('#bph').files[0]) });
+  toast('Book listed!', 'success'); show('mine');
+}
+async function mine() {
+  const b = await api('/books/mine');
+  $('#app').innerHTML = '<h4 class="mb-3">My Listings</h4><div class="row g-3">' + (b.map(x => `<div class="col-md-6 col-lg-4"><div class="card pcard p-3"><div class="d-flex gap-3">
+    ${x.photo ? `<img src="${x.photo}" style="width:64px;height:84px;object-fit:cover;border-radius:6px">` : '<div class="display-5">📖</div>'}
+    <div><h6 class="mb-0">${esc(x.title)}</h6><div class="sub">${x.mode} · ${money(x.price)}</div>
+    <span class="badge mt-1 ${x.availability === 'sold' ? 'bg-danger' : x.availability === 'available' ? 'bg-success' : 'bg-secondary'}">${x.availability === 'sold' ? 'SOLD' : x.availability}</span></div></div></div></div>`).join('')
+    || '<p class="sub">You have not listed any books yet.</p>') + '</div>';
+}
+
+// ---------- orders: request -> owner accepts -> pay -> ship -> OTP delivery ----------
+const LBL = { requested: 'Waiting for owner', approved: 'Approved – payment pending', paid: 'Paid – awaiting dispatch', dispatched: 'On the way', delivered: 'Delivered', return_dispatched: 'Return in transit', completed: 'Completed', rejected: 'Rejected', cancelled: 'Cancelled', delivery_failed: 'Delivery failed' };
+const SI = { requested: 0, approved: 1, paid: 2, dispatched: 3, delivered: 4, return_dispatched: 4, completed: 5 };
+async function orders() {
+  const rows = await api('/requests/mine');
+  $('#app').innerHTML = '<h4 class="mb-3">My Orders</h4>' + (rows.map(r => {
+    const isB = r.borrower_id === me.id, a = [], st = r.request_status, own = ['sell', 'donate'].includes(r.mode), id = r.request_id;
+    const W = r.mode === 'sell' ? ['Seller', 'Buyer'] : r.mode === 'donate' ? ['Donor', 'Receiver'] : ['Owner', 'Borrower'];
+    const del = (r.book_location || '').toLowerCase() === (me.city || '').toLowerCase() ? 30 : 80, total = Number(r.book_price) + del;
+    if (!isB && st === 'requested') a.push(btn('Accept', `decide(${id},'approve')`), btn('Reject', `decide(${id},'reject')`, 'danger'));
+    if (!isB && st === 'paid') a.push(`<input id="tr${id}" class="form-control form-control-sm mb-1" placeholder="Courier tracking number"><input id="cn${id}" class="form-control form-control-sm mb-1" placeholder="Condition note"><input id="ph${id}" type="file" class="form-control form-control-sm mb-1">`, btn('Dispatch book', `dispatch(${id})`));
+    if (!isB && st === 'return_dispatched') a.push(btn('Confirm book received', `post(${id},'return-confirm')`));
+    if (isB && st === 'approved') a.push(`<div class="w-100 sub">Book ${money(r.book_price)} + delivery ${money(del)} = <b>${money(total)}</b> (held in escrow until delivery)</div>
+        <input id="ad${id}" class="form-control form-control-sm mb-1" placeholder="Full delivery address" value="${esc(me.address)}"><input id="al${id}" class="form-control form-control-sm mb-1" placeholder="Alternate phone">
+        <label class="small w-100"><input type="checkbox" id="av${id}"> I will be available to receive the parcel</label>`, btn(`Pay ${money(total)} securely`, `pay(${id})`));
+    if (isB && ['requested', 'approved', 'paid'].includes(st)) a.push(btn('Cancel', `post(${id},'cancel')`, 'outline-danger'));
+    if (isB && st === 'paid') a.push(btn('Demo: dispatch deadline expired', `post(${id},'expire-dispatch')`, 'outline-secondary'));
+    if (isB && st === 'dispatched') a.push(`<input id="otp${id}" class="form-control form-control-sm mb-1" placeholder="Enter delivery OTP">`, btn('Confirm delivery (OTP)', `deliver(${id},true)`), btn('Demo: failed attempt', `deliver(${id},false)`, 'outline-secondary'));
+    if (isB && st === 'delivered') a.push(`<input id="rt${id}" class="form-control form-control-sm mb-1" placeholder="Return tracking no.">`, btn('Dispatch return', `returnBook(${id})`));
+    if (isB && ['delivered', 'completed'].includes(st)) a.push(btn('Report damaged/wrong book', `complain(${id})`, 'outline-danger'));
+    if (st === 'completed') a.push(btn('Rate ' + (isB ? W[0] : W[1]), `review(${id})`, 'outline-dark'));
+    a.push(btn('💬 Chat', `openChat(${id})`, 'outline-primary'));
+    const labels = ['Requested', 'Approved', 'Paid', 'Shipped', 'Delivered'].concat(own ? [] : ['Returned']), idx = own && st === 'completed' ? 4 : SI[st];
+    const steps = idx === undefined ? '' : `<div class="steps">${labels.map((l, i) => `<div class="step ${i <= idx ? 'ok' : ''}">${l}</div>`).join('')}</div>`;
+    const bad = ['rejected', 'cancelled', 'delivery_failed'].includes(st);
+    return `<div class="card border-0 shadow-sm mb-3"><div class="card-body"><div class="d-flex justify-content-between flex-wrap gap-1">
+      <h6 class="mb-0">#${id} ${esc(r.title)} <span class="badge bg-secondary">${r.mode}</span></h6><span class="badge bg-${bad ? 'danger' : st === 'completed' ? 'success' : 'primary'}">${LBL[st]}${r.overdue ? ' · OVERDUE' : ''}</span></div>
+      <div class="sub">${isB ? W[0] + ': ' + esc(r.owner_name) : W[1] + ': ' + esc(r.borrower_name)}</div>${steps}
+      <div class="small">${r.amount ? `Paid ${money(r.amount)} (incl. delivery ${money(r.delivery_charge)}) — escrow: <b>${r.payment_status}</b>${r.refund_amount > 0 ? ', refund ' + money(r.refund_amount) : ''}` : ''}
+      ${r.tracking_id ? `<br>Tracking: ${esc(r.tracking_id)} · attempts: ${r.attempts}` : ''}
+      ${r.otp && st === 'dispatched' ? `<br>Your delivery OTP: <b>${r.otp}</b>` : ''}
+      ${r.due_date && !own ? `<br>Return due: ${new Date(r.due_date).toLocaleDateString()}` : ''}
+      ${r.mode === 'sell' && st === 'completed' ? `<br><b class="text-success">${isB ? '🎉 Purchase complete – this book is yours.' : '💰 Sold – payment released to you.'}</b>` : ''}</div>
+      <div class="mt-2 d-flex gap-2 flex-wrap align-items-start">${a.join('')}</div></div></div>`;
+  }).join('') || '<p class="sub">No orders yet. Browse books and send a request.</p>');
+}
+const done = () => orders();
+const decide = async (id, action) => { await api(`/requests/${id}/decision`, 'PUT', { action }); toast(action === 'approve' ? 'Request accepted. Buyer will pay now.' : 'Request rejected', 'success'); done(); };
+const post = async (id, path) => { await api(`/requests/${id}/${path}`, 'POST', {}); toast('Done', 'success'); done(); };
+const pay = async id => { await api(`/requests/${id}/pay`, 'POST', { address: val('ad' + id), alt_phone: val('al' + id), available: $('#av' + id).checked }); toast('Payment successful – held in escrow', 'success'); done(); };
+const dispatch = async id => { await api(`/requests/${id}/dispatch`, 'POST', { tracking_id: val('tr' + id), condition_note: val('cn' + id), photo: await fileToB64($('#ph' + id).files[0]) }); toast('Book dispatched', 'success'); done(); };
+const deliver = async (id, success) => { const d = await api(`/requests/${id}/delivery`, 'POST', { success, otp: success ? val('otp' + id) : '' }); toast(d.msg || 'Delivered! Thank you.', 'success'); done(); };
+const returnBook = async id => { await api(`/requests/${id}/return`, 'POST', { tracking: val('rt' + id) }); toast('Return dispatched', 'success'); done(); };
+const complain = async id => { const description = prompt('Describe the problem'); if (description) { await api('/complaints', 'POST', { request_id: id, description }); toast('Complaint sent to admin', 'success'); } };
+const review = async id => { const rating = prompt('Rating 1-5'); if (rating) { await api('/reviews', 'POST', { request_id: id, rating, feedback: prompt('Feedback (optional)') }); toast('Thanks for your review!', 'success'); } };
+
+// ---------- notifications ----------
+async function notes() {
+  const n = await api('/notifications');
+  $('#app').innerHTML = '<h4 class="mb-3">Notifications</h4><ul class="list-group shadow-sm">' + (n.map(x => `<li class="list-group-item ${x.read_status ? '' : 'fw-bold'}">${esc(x.message)}<span class="sub float-end">${new Date(x.created_at).toLocaleString()}</span></li>`).join('') || '<li class="list-group-item">No alerts</li>') + '</ul>';
+  api('/notifications/read', 'PUT').then(() => { const e = $('#bell'); if (e) e.classList.add('d-none'); });
+}
+
+// ---------- admin dashboard ----------
+async function admin() {
+  const d = await api('/admin/overview'), c = d.counts;
+  $('#app').innerHTML = `<h5>Admin Dashboard</h5><div class="row g-2 mb-3">
+   ${Object.entries(c).map(([k, v]) => `<div class="col"><div class="card p-2 text-center"><div class="fs-4">${v}</div><div class="small">${k.replace('_', ' ')}</div></div></div>`).join('')}</div>
+   <button class="btn btn-gold btn-sm mb-3" onclick="runReminders()">Send due-date reminders / flag overdue</button>
+   <h6>Complaints</h6><table class="table table-sm bg-white"><tr><th>ID</th><th>Book</th><th>Description</th><th>Status</th><th>Action</th></tr>
+   ${d.complaints.map(x => `<tr><td>${x.complaint_id}</td><td>${esc(x.title)}</td><td>${esc(x.description)}</td><td>${x.status} ${x.resolution || ''}</td>
+    <td>${x.status === 'open' ? ['refund', 'replace', 'dismiss'].map(r => `<button class="btn btn-sm btn-outline-dark" onclick="resolve(${x.complaint_id},'${r}')">${r}</button>`).join(' ') : ''}</td></tr>`).join('')}</table>
+   <h6>Users</h6><table class="table table-sm bg-white"><tr><th>Name</th><th>Email</th><th>City</th><th>Reliability</th><th>Cancellations</th></tr>
+   ${d.users.map(u => `<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${esc(u.city)}</td><td>${u.reliability}</td><td>${u.cancel_count}</td></tr>`).join('')}</table>
+   <h6>Payments (simulated escrow)</h6><table class="table table-sm bg-white"><tr><th>Req</th><th>Amount</th><th>Status</th><th>Refund</th></tr>
+   ${d.payments.map(p => `<tr><td>${p.request_id}</td><td>₹${p.amount}</td><td>${p.payment_status}</td><td>₹${p.refund_amount}</td></tr>`).join('')}</table>`;
+}
+const resolve = async (id, resolution) => { await api('/admin/complaints/' + id, 'PUT', { resolution }); admin(); };
+const runReminders = async () => { const d = await api('/admin/reminders', 'POST'); toast(d.reminded + ' reminder(s) sent', 'success'); };
+
+show('home');
+</script>
+</body>
+</html>
